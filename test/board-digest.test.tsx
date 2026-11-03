@@ -4,6 +4,17 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
 
+type MockRow = {
+  job: string;
+  owner: string | null;
+  runs: number;
+  retries: number;
+  lastStatus: 'ok' | 'retry' | 'fail';
+  lastError: string | null;
+  firstAt: string;
+  lastAt: string;
+};
+
 const mockReadNight = vi.hoisted(() => vi.fn(async (runsDir: string, night: string) => {
   if (night === '2026-10-29') {
     const error = new Error('missing night');
@@ -12,37 +23,44 @@ const mockReadNight = vi.hoisted(() => vi.fn(async (runsDir: string, night: stri
   }
 
   const file = join(runsDir, `${night}.jsonl`);
-  const contents = await require('node:fs').readFileSync(file, 'utf8');
+  const contents = await import('node:fs/promises').then((fs) => fs.readFile(file, 'utf8'));
   if (!contents.trim()) {
     return { rows: [], badLines: 0 };
   }
 
+  const rows = contents
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line: string) => JSON.parse(line) as {
+      at: string;
+      job: string;
+      status: 'ok' | 'retry' | 'fail';
+      owner?: string | null;
+      error?: string | null;
+    });
+
+  const grouped = new Map<string, MockRow>();
+  for (const entry of rows) {
+    const current = grouped.get(entry.job) ?? {
+      job: entry.job,
+      owner: entry.owner ?? null,
+      runs: 0,
+      retries: 0,
+      lastStatus: entry.status,
+      lastError: entry.error ?? null,
+      firstAt: entry.at,
+      lastAt: entry.at,
+    };
+    current.runs += 1;
+    current.retries += entry.status === 'retry' ? 1 : 0;
+    current.lastStatus = entry.status;
+    current.lastError = entry.error ?? current.lastError;
+    current.lastAt = entry.at;
+    grouped.set(entry.job, current);
+  }
+
   return {
-    rows: contents
-      .split(/\r?\n/)
-      .filter(Boolean)
-      .map((line) => JSON.parse(line))
-      .map((entry) => ({
-        job: entry.job,
-        owner: entry.owner ?? null,
-        runs: 1,
-        retries: entry.status === 'retry' ? 1 : 0,
-        lastStatus: entry.status,
-        lastError: entry.error ?? null,
-        firstAt: entry.at,
-        lastAt: entry.at,
-      }))
-      .reduce((acc, row) => {
-        const current = acc.get(row.job) ?? { ...row, runs: 0, retries: 0 };
-        current.runs += 1;
-        current.retries += row.retries;
-        current.lastStatus = row.lastStatus;
-        current.lastError = row.lastError;
-        current.lastAt = row.lastAt;
-        acc.set(row.job, current);
-        return acc;
-      }, new Map<string, any>())
-      .values(),
+    rows: Array.from(grouped.values()).sort((a, b) => a.job.localeCompare(b.job)),
     badLines: 0,
   };
 }));
