@@ -11,4 +11,10 @@ export type DigestRow = {
   lastAt: string;
 };
 
-export declare function readNight(runsDir: string, night: string): Promise<DigestRow[]>;
+export type Night = {
+  rows: DigestRow[];
+  badLines: number;
+};
+
+/** Reads runs/<night>.jsonl. Lines that do not parse are counted in badLines, never thrown. */
+export declare function readNight(runsDir: string, night: string): Promise<Night>;
