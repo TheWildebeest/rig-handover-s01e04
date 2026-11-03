@@ -9,4 +9,4 @@ See `docs/vision.md`. rig keeps a lane's lights on: heartbeat, one status board,
 
 ## Current direction
 
-- Build `plan.md` (morning digest), one GitHub issue per worker.
+- Morning digest plan is done (`docs/plans/done/morning-digest.md`).
